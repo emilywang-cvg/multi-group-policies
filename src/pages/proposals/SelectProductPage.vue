@@ -102,6 +102,12 @@ function selectAgent(agent: Agent) {
   showAgentDropdown.value = false
 }
 
+function handleAgentBlur() {
+  window.setTimeout(() => {
+    showAgentDropdown.value = false
+  }, 200)
+}
+
 function selectProduct(product: Product) {
   selectedProduct.value = product
 }
@@ -201,7 +207,7 @@ async function handleCreateProposal() {
             <input
               v-model="agentSearchQuery"
               @focus="showAgentDropdown = true"
-              @blur="setTimeout(() => showAgentDropdown = false, 200)"
+              @blur="handleAgentBlur"
               type="text"
               placeholder="Select"
               :disabled="!selectedChannel"
