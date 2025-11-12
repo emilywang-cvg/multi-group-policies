@@ -91,6 +91,12 @@ export async function searchProducts(channelId: ID, agentId: ID, query: string):
   )
 }
 
+// Get agent by ID
+export async function getAgentById(agentId: ID): Promise<Agent | null> {
+  await delay(100)
+  return agents.find(agent => agent.id === agentId) || null
+}
+
 
 
 

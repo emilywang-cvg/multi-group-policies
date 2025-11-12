@@ -87,6 +87,22 @@ const navigateTo = (path: string) => {
             </div>
           </button>
           <button
+            @click="navigateTo('/proposals')"
+            class="w-full text-left px-4 py-2 rounded-lg hover:bg-gray-100 text-gray-700 font-medium transition-colors"
+          >
+            <div class="flex items-center space-x-3">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+              <span>Proposals</span>
+            </div>
+          </button>
+          <button
             @click="navigateTo('/proposals/new')"
             class="w-full text-left px-4 py-2 rounded-lg hover:bg-gray-100 text-gray-700 font-medium transition-colors"
           >
@@ -146,16 +162,34 @@ const navigateTo = (path: string) => {
               </button>
             </div>
           </div>
+
+          <div class="pt-6 border-t border-gray-200 mt-6">
+            <p
+              class="px-4 text-xs font-semibold text-gray-400 uppercase tracking-wider"
+            >
+              Premium & Payment Demos
+            </p>
+            <div class="mt-2 space-y-1">
+              <button
+                @click="navigateTo('/demo/billing-tree')"
+                class="w-full text-left px-4 py-2 rounded-lg hover:bg-gray-100 text-gray-600 text-sm transition-colors"
+              >
+                Premium & Payment Demo
+              </button>
+              <button
+                @click="navigateTo('/demo/issuance')"
+                class="w-full text-left px-4 py-2 rounded-lg hover:bg-gray-100 text-gray-600 text-sm transition-colors"
+              >
+                Issuance Demo
+              </button>
+            </div>
+          </div>
         </nav>
       </aside>
 
       <!-- Main content area -->
       <main class="flex-1 overflow-auto bg-gray-50 p-6">
         <div class="max-w-full mx-auto">
-          <!-- Tailwind test - remove after confirming -->
-          <div class="hidden lg:block m-4 p-3 rounded bg-emerald-100 text-emerald-800 text-sm">
-            Tailwind OK: if you see this green box styled, utilities are loading.
-          </div>
           <RouterView />
         </div>
       </main>

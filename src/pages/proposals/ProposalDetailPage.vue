@@ -5,10 +5,13 @@ import type { Proposal, Offer } from '@/features/proposals/types'
 import type { Plan } from '@/features/benefits/types'
 import type { CensusSummary } from '@/features/members/types'
 import type { CompanyNode } from '@/features/clients/types'
+import type { Agent } from '@/features/products/types'
 import * as proposalApi from '@/features/proposals/api'
 import * as benefitsApi from '@/features/benefits/api'
 import * as membersApi from '@/features/members/api'
 import * as clientApi from '@/features/clients/api'
+import * as productsApi from '@/features/products/api'
+import BillingPlanTreeView from '@/features/billing/components/BillingPlanTreeView.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -35,9 +38,11 @@ const editingClientInfo = ref(false)
 const editingDocuments = ref(false)
 const subsidiaryPage = ref(1)
 const subsidiaryPageSize = ref(10)
+const currentClient = ref<CompanyNode | null>(null)
 const masterCompany = ref<CompanyNode | null>(null)
 const subsidiaries = ref<CompanyNode[]>([])
 const loadingSubsidiaries = ref(false)
+const primaryAgent = ref<Agent | null>(null)
 
 // Create Class Modal
 const showCreateClassModal = ref(false)
@@ -129,6 +134,14 @@ async function loadProposal() {
     if (data && data.clientId) {
       await loadMasterCompanyAndSubsidiaries(data.clientId)
     }
+    
+    // Load primary agent details
+    if (data && data.agentId) {
+      const agent = await productsApi.getAgentById(data.agentId)
+      primaryAgent.value = agent
+    } else {
+      primaryAgent.value = null
+    }
   } catch (error) {
     console.error('Failed to load proposal:', error)
   } finally {
@@ -139,29 +152,39 @@ async function loadProposal() {
 async function loadMasterCompanyAndSubsidiaries(clientId: string) {
   loadingSubsidiaries.value = true
   try {
-    // Load the master company
+    // Load the current client
     const company = await clientApi.getCompanyById(clientId)
     if (company) {
-      masterCompany.value = company
+      currentClient.value = company
       
-      // If it's a parent company, load its children (subsidiaries)
+      // If it's a parent company (master), load its children (subsidiaries)
       if (company.isParent) {
+        masterCompany.value = null
         subsidiaries.value = await clientApi.listChildren(clientId)
       } else {
-        // If it's a subsidiary, find the parent and load all siblings
-        const parent = await clientApi.getCompanyById(company.parentId || '')
-        if (parent && parent.isParent) {
-          subsidiaries.value = await clientApi.listChildren(parent.id)
+        // If it's a subsidiary (child), load its parent (master company)
+        if (company.parentId) {
+          const parent = await clientApi.getCompanyById(company.parentId)
+          if (parent) {
+            masterCompany.value = parent
+            subsidiaries.value = []
+          } else {
+            masterCompany.value = null
+            subsidiaries.value = []
+          }
         } else {
+          masterCompany.value = null
           subsidiaries.value = []
         }
       }
     } else {
+      currentClient.value = null
       masterCompany.value = null
       subsidiaries.value = []
     }
   } catch (error) {
     console.error('Failed to load master company and subsidiaries:', error)
+    currentClient.value = null
     masterCompany.value = null
     subsidiaries.value = []
   } finally {
@@ -399,6 +422,85 @@ const totalSubsidiaryPages = computed(() => {
   return Math.ceil(subsidiaries.value.length / subsidiaryPageSize.value)
 })
 
+// Computed property to determine if we should show master company or subsidiaries
+const showMasterCompany = computed(() => {
+  return currentClient.value && !currentClient.value.isParent && masterCompany.value !== null
+})
+
+const showSubsidiaries = computed(() => {
+  return currentClient.value && currentClient.value.isParent
+})
+
+// Computed property to check if we should show billing plan tree view
+const shouldShowBillingTreeView = computed(() => {
+  // Show tree view if client is a master company with subsidiaries, or if it's a subsidiary with a parent
+  return (currentClient.value && currentClient.value.isParent && subsidiaries.value.length > 0) ||
+         (currentClient.value && !currentClient.value.isParent && masterCompany.value !== null)
+})
+
+// Get the master company ID for billing tree view
+const masterCompanyIdForBilling = computed(() => {
+  if (currentClient.value?.isParent) {
+    return currentClient.value.id
+  } else if (masterCompany.value) {
+    return masterCompany.value.id
+  }
+  return proposal.value?.clientId || ''
+})
+
+// Parse agent name to extract firstName, lastName, and salutation
+function parseAgentName(agentName: string): { firstName: string; lastName: string; salutation: string } {
+  if (!agentName) {
+    return { firstName: '', lastName: '', salutation: '' }
+  }
+  
+  // Split by " - " to get the name part (format: "ID - Name")
+  const parts = agentName.split(' - ')
+  const namePart = parts.length > 1 ? parts[1] : agentName
+  
+  // Split name by spaces
+  const nameWords = namePart.trim().split(/\s+/)
+  
+  if (nameWords.length === 0) {
+    return { firstName: '', lastName: '', salutation: '' }
+  }
+  
+  // Common salutations
+  const salutations = ['Mr', 'Mrs', 'Ms', 'Miss', 'Dr', 'Prof']
+  let salutation = ''
+  let startIndex = 0
+  
+  // Check if first word is a salutation
+  if (salutations.includes(nameWords[0])) {
+    salutation = nameWords[0]
+    startIndex = 1
+  }
+  
+  // Last word is lastName
+  const lastName = nameWords.length > startIndex ? nameWords[nameWords.length - 1] : ''
+  
+  // Everything between salutation (if any) and lastName is firstName
+  const firstName = nameWords.length > startIndex + 1 
+    ? nameWords.slice(startIndex, nameWords.length - 1).join(' ')
+    : nameWords.length === startIndex + 1 && !salutation
+      ? nameWords[startIndex]
+      : ''
+  
+  return { firstName, lastName, salutation }
+}
+
+const primaryAgentDetails = computed(() => {
+  if (!primaryAgent.value) {
+    return { firstName: '', lastName: '', salutation: '', agentId: '' }
+  }
+  
+  const parsed = parseAgentName(primaryAgent.value.name)
+  return {
+    ...parsed,
+    agentId: primaryAgent.value.id
+  }
+})
+
 function handleSubsidiaryPageChange(newPage: number) {
   subsidiaryPage.value = Math.max(1, Math.min(newPage, totalSubsidiaryPages.value))
 }
@@ -415,7 +517,7 @@ function openSubsidiaryDetail(subsidiaryId: string) {
   <div>
     <!-- Breadcrumb -->
     <div class="flex items-center space-x-2 text-sm text-gray-500 mb-4">
-      <router-link to="/proposals/new" class="hover:text-blue-600">Proposals</router-link>
+      <router-link to="/proposals" class="hover:text-blue-600">Proposals</router-link>
       <span>/</span>
       <span class="text-gray-900">Proposal Detail</span>
     </div>
@@ -884,7 +986,17 @@ function openSubsidiaryDetail(subsidiaryId: string) {
                   </button>
                 </div>
 
-                <div class="space-y-3">
+                <!-- Billing Plan Tree View (for multiple companies) -->
+                <div v-if="shouldShowBillingTreeView && masterCompanyIdForBilling" class="mt-4">
+                  <h5 class="text-sm font-semibold text-gray-900 mb-4">Billing Plan</h5>
+                  <BillingPlanTreeView
+                    :master-company-id="masterCompanyIdForBilling"
+                    :policy-start-date="offer.policyInfo?.policyStartDate"
+                  />
+                </div>
+
+                <!-- Regular Premium Breakdown (single company) -->
+                <div v-else class="space-y-3">
                   <!-- Gross Premium -->
                   <div class="flex items-center justify-between py-2">
                     <span class="text-sm text-gray-700">Gross Premium</span>
@@ -993,19 +1105,19 @@ function openSubsidiaryDetail(subsidiaryId: string) {
                 <div class="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span class="text-gray-500">First Name:</span>
-                    <span class="ml-2 text-gray-900">-</span>
+                    <span class="ml-2 text-gray-900">{{ primaryAgentDetails.firstName || '-' }}</span>
                   </div>
                   <div>
                     <span class="text-gray-500">Last Name:</span>
-                    <span class="ml-2 text-gray-900">-</span>
+                    <span class="ml-2 text-gray-900">{{ primaryAgentDetails.lastName || '-' }}</span>
                   </div>
                   <div>
                     <span class="text-gray-500">Salutation:</span>
-                    <span class="ml-2 text-gray-900">-</span>
+                    <span class="ml-2 text-gray-900">{{ primaryAgentDetails.salutation || '-' }}</span>
                   </div>
                   <div>
                     <span class="text-gray-500">Agent ID:</span>
-                    <span class="ml-2 text-gray-900">{{ proposal.agentId || '-' }}</span>
+                    <span class="ml-2 text-gray-900">{{ primaryAgentDetails.agentId || proposal.agentId || '-' }}</span>
                   </div>
                 </div>
               </div>
@@ -1117,8 +1229,54 @@ function openSubsidiaryDetail(subsidiaryId: string) {
             </div>
           </div>
 
-          <!-- Subsidiary Section -->
-          <div class="bg-white border border-gray-200 rounded-lg p-4">
+          <!-- Master Company Section (shown when client is a child company) -->
+          <div v-if="showMasterCompany" class="bg-white border border-gray-200 rounded-lg p-4">
+            <h3 class="text-sm font-semibold text-gray-900 mb-4">Master Company</h3>
+            <div v-if="loadingSubsidiaries" class="text-center py-4 text-sm text-gray-500">
+              Loading master company...
+            </div>
+            <div v-else-if="masterCompany" class="space-y-3">
+              <div class="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span class="text-gray-500">ID:</span>
+                  <span class="ml-2 text-gray-900">{{ masterCompany.id }}</span>
+                </div>
+                <div>
+                  <span class="text-gray-500">Company Name:</span>
+                  <span class="ml-2 text-gray-900">
+                    <a
+                      @click="openSubsidiaryDetail(masterCompany.id)"
+                      class="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                    >
+                      {{ masterCompany.name }}
+                    </a>
+                  </span>
+                </div>
+                <div v-if="masterCompany.crNumber">
+                  <span class="text-gray-500">CR Number:</span>
+                  <span class="ml-2 text-gray-900">{{ masterCompany.crNumber }}</span>
+                </div>
+                <div>
+                  <span class="text-gray-500">Status:</span>
+                  <span
+                    :class="{
+                      'bg-green-100 text-green-800': masterCompany.status === 'ACTIVE',
+                      'bg-red-100 text-red-800': masterCompany.status === 'INACTIVE',
+                    }"
+                    class="ml-2 inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                  >
+                    {{ masterCompany.status }}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div v-else class="text-center py-4 text-sm text-gray-500">
+              No master company found
+            </div>
+          </div>
+
+          <!-- Subsidiary Section (shown when client is a master company) -->
+          <div v-if="showSubsidiaries" class="bg-white border border-gray-200 rounded-lg p-4">
             <h3 class="text-sm font-semibold text-gray-900 mb-4">Subsidiary</h3>
             <div v-if="loadingSubsidiaries" class="text-center py-4 text-sm text-gray-500">
               Loading subsidiaries...

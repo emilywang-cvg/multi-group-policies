@@ -73,6 +73,16 @@ const router = createRouter({
       name: 'doc-type-demo',
       component: () => import('@/features/document-upload/DocTypeViewDemo.vue'),
     },
+    {
+      path: '/demo/billing-tree',
+      name: 'billing-tree-demo',
+      component: () => import('@/features/demo/views/BillingTreeDemo.vue'),
+    },
+    {
+      path: '/demo/issuance',
+      name: 'issuance-demo',
+      component: () => import('@/features/demo/views/IssuanceDemo.vue'),
+    },
   ],
 })
 
